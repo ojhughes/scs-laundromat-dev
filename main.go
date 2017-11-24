@@ -5,9 +5,10 @@ import (
 
 	"github.com/pivotal-cf/om/network"
 	"github.com/pivotal-cf/om/api"
-	"github.com/ojhughes/scs-laundromat-dev/operations"
-	"github.com/ojhughes/scs-laundromat-dev/logger"
+	"github.com/pivotal-cf/scs-laundromat-dev/logger"
+	"github.com/pivotal-cf/scs-laundromat-dev/operations"
 	"sync"
+	"github.com/pivotal-cf/om/commands"
 )
 
 
@@ -39,13 +40,21 @@ func main() {
 
 	determineState := operations.NewDetermineTileStateService(stageService, deployedProductService, pendingChangesService)
 	tileState, err := determineState.PreInstallState(operations.GetStateInput{ProductName: tileName})
-
+	waitTimeout(&wg, 20 * time.Second)
 	switch tileState {
 	case operations.StagedButNotDeployed: {
 		removeIncompleteTileService := operations.NewRemoveIncompleteTileService(stageService)
 		removeIncompleteTileService.RemoveIncompleteInstall(tileName)
-	} //sds
+	}
 	case operations.PendingUpdate: {
+		dashboardService := api.NewDashboardService(authClient)
+		revertChangeService := operations.NewRevertChangeService(dashboardService)
+		revertChangeService.RevertChanges()
+	}
+	case operations.PendingDeletion: {
+
+	}
+	case operations.StagedAndDeployed: {
 
 	}
 	}

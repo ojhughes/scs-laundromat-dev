@@ -3,7 +3,7 @@ package operations
 import (
 	"errors"
 	"fmt"
-	"github.com/ojhughes/scs-laundromat-dev/logger"
+	"github.com/pivotal-cf/scs-laundromat-dev/logger"
 	"github.com/pivotal-cf/om/api"
 	"os"
 	"strings"
