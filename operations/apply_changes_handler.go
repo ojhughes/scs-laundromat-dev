@@ -1,0 +1,4 @@
+package operations
+
+func PostTileRemove() {
+}
