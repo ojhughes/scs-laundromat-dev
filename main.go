@@ -8,7 +8,9 @@ import (
 	"github.com/pivotal-cf/scs-laundromat-dev/logger"
 	"github.com/pivotal-cf/scs-laundromat-dev/operations"
 	"sync"
-	"github.com/pivotal-cf/om/commands"
+	"github.com/cloudfoundry-community/go-cfclient"
+	"github.com/pivotal-cf/om/progress"
+	"go/token"
 )
 
 
@@ -18,7 +20,7 @@ func main() {
 	//target := os.Getenv("TARGET")
 	//opsManagerUser := os.Getenv("OPS_MAN_USER")
 	//opsManagerPassword := os.Getenv("OPS_MAN_PASSWORD")
-	tileName := "p-spring-cloud-services"
+	productName := "p-spring-cloud-services"
 	target := "pcf.indigo.springapps.io"
 	opsManagerUser := "pivotalcf"
 	opsManagerPassword := "pivotalcf"
@@ -32,32 +34,65 @@ func main() {
 	errandDisabler := api.NewErrandsService(authClient)
 	disableErrandService := operations.NewDisableErrandService(errandDisabler)
 	go disableErrandService.DisableSystemErrands(&wg)
-
+	wg.Add(1)
 	stageService := api.NewStagedProductsService(authClient)
-	//unstageInput := api.UnstageProductInput{ProductName: tileName}
+	//unstageInput := api.UnstageProductInput{ProductName: productName}
 	pendingChangesService := api.NewPendingChangesService(authClient)
 	deployedProductService := api.NewDeployedProductsService(authClient)
-
+	performInstallService := operations.NewPerformInstallService(api.NewInstallationsService(authClient))
+	removeIncompleteTileService := operations.NewRemoveIncompleteTileService(stageService)
+	credentialService := api.NewCredentialsService(authClient, progress.NewBar())
 	determineState := operations.NewDetermineTileStateService(stageService, deployedProductService, pendingChangesService)
-	tileState, err := determineState.PreInstallState(operations.GetStateInput{ProductName: tileName})
-	waitTimeout(&wg, 20 * time.Second)
+	tileState, err := determineState.PreInstallState(operations.GetStateInput{ProductName: productName})
+	if waitTimeout(&wg, 20 * time.Second) {
+		logger.Error.Fatalln("exceeded timeout waiting for errand state to be set")
+	}
+	var installOutput api.InstallationsServiceOutput
 	switch tileState {
 	case operations.StagedButNotDeployed: {
-		removeIncompleteTileService := operations.NewRemoveIncompleteTileService(stageService)
-		removeIncompleteTileService.RemoveIncompleteInstall(tileName)
+		removeIncompleteTileService.RemoveInstall(productName)
 	}
 	case operations.PendingUpdate: {
 		dashboardService := api.NewDashboardService(authClient)
 		revertChangeService := operations.NewRevertChangeService(dashboardService)
-		revertChangeService.RevertChanges()
+		err := revertChangeService.RevertChanges()
+		if err != nil {
+			//Still Try and unstage tile if reverting fails
+			logger.Error.Println(err)
+		}
+		removeIncompleteTileService.RemoveInstall(productName)
+		installOutput, err = performInstallService.PerformInstall(productName)
 	}
 	case operations.PendingDeletion: {
+		installOutput, err = performInstallService.PerformInstall(productName)
 
 	}
 	case operations.StagedAndDeployed: {
+		removeIncompleteTileService.RemoveInstall(productName)
+		installOutput, err = performInstallService.PerformInstall(productName)
+	}
+	if installOutput.Status == api.StatusFailed {
+		extractCreds := operations.NewExtractCredentialService(credentialService, deployedProductService)
+		cfAdminCreds, err := extractCreds.ExtractCfPassword(productName)
+		if err != nil {
+			logger.Error.Fatalln(err)
+		}
+		cfClientFactory := operations.NewCfClientFactory()
+		config := &cfclient.Config{
+			ApiAddress:        "https://" + target,
+			Username:          cfAdminCreds["identity"],
+			Password:          cfAdminCreds["password"],
+			SkipSslValidation: true,
+		}
+		cfClientService, err := cfClientFactory.NewClient(config)
+		if err != nil {
+			logger.Error.Fatalln(err)
+		}
+		forcedUninstaller := operations.NewForceUninstallService(cfClientService)
+		forcedUninstaller.ForceUninstall(productName)
+	}
+	}
 
-	}
-	}
 }
 
 func waitTimeout(wg *sync.WaitGroup, timeout time.Duration) bool {
