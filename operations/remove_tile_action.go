@@ -29,6 +29,7 @@ func NewRemoveIncompleteTileService(ss stagedService) RemoveIncompleteTileServic
 }
 
 func (d RemoveIncompleteTileService) RemoveInstall(productName string) error {
+	logger.Info.Println("Unstaging tile")
 	err := d.stagedService.Unstage(api.UnstageProductInput{ProductName: productName})
 	if err != nil {
 		return err
@@ -53,6 +54,7 @@ func NewRevertChangeService(ds dashboardService) RevertChangeService {
 }
 
 func (r RevertChangeService) RevertChanges() error {
+	logger.Info.Println("Reverting pending changes")
 	revertChangeService := commands.NewRevertStagedChanges(r.dashboardService, logger.Info)
 	err := revertChangeService.Execute([]string{""})
 	if err != nil {
@@ -77,6 +79,7 @@ func NewPerformInstallService(is installService) PerformInstallService {
 }
 
 func (p PerformInstallService) PerformInstall(productName string) (api.InstallationsServiceOutput, error) {
+	logger.Info.Println("Applying changes to delete tile")
 	emptyOutput := api.InstallationsServiceOutput{}
 	installation, err := p.installationsService.Trigger(true, true)
 	if err != nil {
@@ -98,15 +101,12 @@ func (p PerformInstallService) PerformInstall(productName string) (api.Installat
 	}
 }
 
-type forcedUninstaller interface {
-}
-
 type credentialsService interface {
 	Fetch(deployedProductGUID, credentialReference string) (api.CredentialOutput, error)
 }
 
 type ForceUninstallService struct {
-	cfClient           CfClientService
+	cfClient CfClientService
 }
 
 type CfClientFactory interface {
@@ -129,14 +129,14 @@ func (self *cfClientFactory) NewClient(config *cfclient.Config) (CfClientService
 	return cfclient.NewClient(config)
 }
 
-func NewForceUninstallService(cc CfClient) ForceUninstallService {
+func NewForceUninstallService(cc CfClientService) ForceUninstallService {
 	return ForceUninstallService{
 		cfClient: cc,
 	}
 }
 
 func (f ForceUninstallService) ForceUninstall(productName string) error {
-
+	logger.Info.Println("Forcefully uninstalling SCS by removing tile orgs and spaces")
 	systemOrgGuid, err := f.cfClient.GetOrgByName(systemOrgName)
 	if err != nil {
 		return err
@@ -164,10 +164,10 @@ func (f ForceUninstallService) ForceUninstall(productName string) error {
 	return nil
 }
 
-func NewExtractCredentialService(cs credentialsService, ds deployedService) ExtractCredentialService{
+func NewExtractCredentialService(cs credentialsService, ds deployedService) ExtractCredentialService {
 	return ExtractCredentialService{
 		credentialsService: cs,
-		deployedService: ds,
+		deployedService:    ds,
 	}
 }
 

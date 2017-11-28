@@ -2,10 +2,8 @@ package operations
 
 import (
 	"errors"
-	"fmt"
-	"github.com/pivotal-cf/scs-laundromat-dev/logger"
 	"github.com/pivotal-cf/om/api"
-	"os"
+	"github.com/pivotal-cf/scs-laundromat-dev/logger"
 	"strings"
 )
 
@@ -16,17 +14,13 @@ const (
 	PendingDeletion
 	NotStaged
 )
-const (
-	Success PostInstallState = 1 + iota
-	ErrandFailed
-)
 
 type TileState int
-type PostInstallState int
 
 type stagedService interface {
 	StagedProducts() (api.StagedProductsOutput, error)
 	Unstage(input api.UnstageProductInput) error
+	Find(productName string) (api.StagedProductsFindOutput, error)
 }
 
 type deployedService interface {
@@ -112,18 +106,19 @@ func isScsTileStaged(stagedProducts api.StagedProductsOutput, input GetStateInpu
 	isStaged := false
 	for _, stagedProduct := range stagedProducts.Products {
 		if input.ProductName == stagedProduct.Type {
-			fmt.Println("SCS is staged")
+			logger.Info.Println("SCS is staged")
 			isStaged = true
 		}
 	}
 	return isStaged
 }
+
 func isScsTileDeployed(deployedProducts []api.DeployedProductOutput, input GetStateInput) bool {
 	isDeployed := false
 	for _, deployedProduct := range deployedProducts {
 		if input.ProductName == deployedProduct.Type {
 			isDeployed = true
-			fmt.Println("SCS is deployed")
+			logger.Info.Println("SCS is deployed")
 		}
 	}
 	return isDeployed
