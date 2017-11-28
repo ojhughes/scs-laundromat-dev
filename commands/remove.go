@@ -1,7 +1,6 @@
 package commands
 
 import (
-	//"github.com/cloudfoundry-community/go-cfclient"
 	"github.com/cloudfoundry-community/go-cfclient"
 	"github.com/pivotal-cf/om/api"
 	"github.com/pivotal-cf/scs-laundromat-dev/logger"
